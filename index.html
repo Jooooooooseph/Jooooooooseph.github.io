@@ -7,153 +7,51 @@
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #ffffff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
-        .card { background: #1a1a1a; padding: 2rem; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.7); text-align: center; width: 340px; border: 1px solid #333; }
-        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; letter-spacing: 1px; color: #5865F2; }
-        .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 1.5rem; }
-        .id-container { background: #000; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 1.1rem; color: #00d4ff; margin: 10px 0; border: 1px solid #333; cursor: pointer; }
-        .id-container:active { background: #111; }
-        input, select { padding: 12px; border-radius: 8px; border: 1px solid #444; background: #222; color: white; margin-bottom: 10px; width: 100%; box-sizing: border-box; outline: none; }
-        button { background: #5865F2; border: none; color: white; padding: 14px; border-radius: 10px; cursor: pointer; font-weight: 700; width: 100%; font-size: 1rem; transition: 0.2s; margin-top: 5px; }
+        .card { background: #1a1a1a; padding: 2.5rem; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.7); text-align: center; width: 340px; border: 1px solid #333; }
+        h1 { font-size: 1.5rem; margin-bottom: 1rem; letter-spacing: 1px; color: #5865F2; }
+        .id-container { background: #000; padding: 12px; border-radius: 12px; font-family: monospace; font-size: 1.1rem; color: #00d4ff; margin: 15px 0; border: 1px solid #222; user-select: all; }
+        input { padding: 12px; border-radius: 10px; border: 1px solid #444; background: #222; color: white; margin-bottom: 15px; width: 100%; box-sizing: border-box; outline: none; }
+        button { background: #5865F2; border: none; color: white; padding: 14px; border-radius: 10px; cursor: pointer; font-weight: 700; width: 100%; font-size: 1rem; transition: 0.3s; }
         button:hover { background: #4752c4; transform: translateY(-2px); }
-        button.secondary { background: #333; margin-top: 10px; }
-        #status { margin-top: 15px; font-size: 0.9rem; color: #888; min-height: 1.2em; }
+        #status { margin-top: 20px; font-size: 0.9rem; color: #888; }
         canvas { width: 100%; height: 60px; background: #000; border-radius: 8px; margin-top: 15px; border: 1px solid #333; }
-        .hidden { display: none; }
     </style>
 </head>
 <body>
     <div class="card">
         <h1>VIBE MIC</h1>
-        <div class="subtitle">Turn your Phone into a PC Mic</div>
-        
-        <div id="pc-ui">
-            <div class="id-container" id="my-id" title="Click to Copy">Generating ID...</div>
-            <select id="audioOutput">
-                <option value="">Default Speakers</option>
-            </select>
-            <p style="font-size: 0.75rem; color: #666;">Select "CABLE Input" to use with Discord</p>
-        </div>
-
-        <div id="phone-ui">
-            <input type="text" id="target-id" placeholder="Enter PC ID here">
-            <button onclick="startStream()">CONNECT & TALK</button>
-        </div>
-
+        <div class="id-container" id="my-id">Initializing...</div>
+        <input type="text" id="peer-id" placeholder="Paste PC ID here">
+        <button onclick="startStream()">CONNECT MIC</button>
         <canvas id="visualizer"></canvas>
-        <p id="status">Waiting for connection...</p>
+        <p id="status">System Standby</p>
         <audio id="remoteAudio" autoplay></audio>
     </div>
 
     <script>
-        const peer = new Peer();
+        // 1. Define UI elements first to avoid "ReferenceError"
         const statusEl = document.getElementById('status');
-        const audioSelect = document.getElementById('audioOutput');
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
+        const myIdEl = document.getElementById('my-id');
         const remoteAudio = document.getElementById('remoteAudio');
 
-        // Initialize Peer
+        // 2. Initialize PeerJS
+        // Note: If you still get errors, your network might be blocking PeerJS servers.
+        const peer = new Peer();
+
         peer.on('open', (id) => {
-            document.getElementById('my-id').innerText = id;
-            statusEl.innerText = "Ready. Open this on phone.";
-            populateAudioOutputs();
+            myIdEl.innerText = id;
+            statusEl.innerText = "ID Ready - Share with Phone";
+            console.log("My ID is: " + id);
         });
 
-        // Click ID to Copy
-        document.getElementById('my-id').addEventListener('click', () => {
-            const id = document.getElementById('my-id').innerText;
-            navigator.clipboard.writeText(id).then(() => statusEl.innerText = "ID Copied to clipboard!");
+        peer.on('error', (err) => {
+            console.error(err);
+            statusEl.innerText = "Error: " + err.type;
         });
 
-        // Populate Audio Output Devices (For PC to select Virtual Cable)
-        async function populateAudioOutputs() {
-            if (!navigator.mediaDevices.selectAudioOutput) return; // Chrome only feature usually
-            try {
-                // Request permission first
-                await navigator.mediaDevices.getUserMedia({ audio: true });
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const audioOutputs = devices.filter(device => device.kind === 'audiooutput');
-                
-                audioSelect.innerHTML = '<option value="">Default System Output</option>';
-                audioOutputs.forEach(device => {
-                    const option = document.createElement('option');
-                    option.value = device.deviceId;
-                    option.text = device.label || `Speaker ${audioSelect.length}`;
-                    audioSelect.appendChild(option);
-                });
-            } catch (e) {
-                console.log("Permission denied for audio devices");
-            }
-        }
-
-        // Change Audio Output
-        audioSelect.addEventListener('change', async () => {
-            const deviceId = audioSelect.value;
-            if (remoteAudio.setSinkId) {
-                try {
-                    await remoteAudio.setSinkId(deviceId);
-                    statusEl.innerText = "Audio routed to selected device";
-                } catch (error) {
-                    statusEl.innerText = "Error routing audio: " + error;
-                }
-            } else {
-                statusEl.innerText = "Browser doesn't support output selection.";
-            }
-        });
-
-        // --- RECEIVER LOGIC (PC) ---
+        // 3. Handle Incoming Calls (PC Side)
         peer.on('call', (call) => {
-            statusEl.innerText = "Phone connected! Accepting stream...";
-            call.answer(); 
-            call.on('stream', (stream) => {
-                remoteAudio.srcObject = stream;
-                statusEl.innerText = "🔴 LIVE - Mic Active";
-                setupVisualizer(stream);
-            });
-        });
-
-        // --- SENDER LOGIC (PHONE) ---
-        async function startStream() {
-            const targetId = document.getElementById('target-id').value;
-            if (!targetId) return alert("Enter the ID from your PC screen");
-            
-            try {
-                statusEl.innerText = "Requesting Mic Access...";
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: { 
-                        echoCancellation: true, 
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    } 
-                });
-                
-                const call = peer.call(targetId, stream);
-                statusEl.innerText = "Transmitting to PC...";
-                setupVisualizer(stream);
-                
-                // Hide inputs to prevent accidental clicks
-                document.getElementById('phone-ui').style.display = 'none';
-                
-            } catch (err) {
-                statusEl.innerText = "Mic Error: " + err.message;
-            }
-        }
-
-        // --- VISUALIZER ---
-        function setupVisualizer(stream) {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const source = audioCtx.createMediaStreamSource(stream);
-            const analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 128;
-            source.connect(analyser);
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-            const canvas = document.getElementById('visualizer');
-            const ctx = canvas.getContext('2d');
-
-            function draw() {
-                requestAnimationFrame(draw);
-                analyser.getByteFrequencyData(dataArray);
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                const barWidth = (canvas.width / bufferLength) * 2.5;
-                let x = 0;
-                for (let i =
+            statusEl.innerText = "Incoming Stream...";
+            call.answer();
