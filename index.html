@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VibeMic Live</title>
+    <script src="https://unpkg.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #ffffff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+        .card { background: #1a1a1a; padding: 2.5rem; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.7); text-align: center; width: 340px; border: 1px solid #333; }
+        h1 { font-size: 1.5rem; margin-bottom: 1rem; letter-spacing: 1px; color: #5865F2; }
+        .id-container { background: #000; padding: 12px; border-radius: 12px; font-family: monospace; font-size: 1.1rem; color: #00d4ff; margin: 15px 0; border: 1px solid #222; }
+        input { padding: 12px; border-radius: 10px; border: 1px solid #444; background: #222; color: white; margin-bottom: 15px; width: 100%; box-sizing: border-box; outline: none; }
+        button { background: #5865F2; border: none; color: white; padding: 14px; border-radius: 10px; cursor: pointer; font-weight: 700; width: 100%; font-size: 1rem; transition: 0.3s; }
+        button:hover { background: #4752c4; transform: translateY(-2px); }
+        #status { margin-top: 20px; font-size: 0.9rem; color: #888; }
+        canvas { width: 100%; height: 60px; background: #000; border-radius: 8px; margin-top: 15px; border: 1px solid #333; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>VIBE MIC</h1>
+        <div class="id-container" id="my-id">Initializing...</div>
+        <input type="text" id="peer-id" placeholder="Paste PC ID here">
+        <button onclick="startStream()">CONNECT MIC</button>
+        <canvas id="visualizer"></canvas>
+        <p id="status">System Standby</p>
+        <audio id="remoteAudio" autoplay></audio>
+    </div>
+
+    <script>
+        const peer = new Peer();
+        const statusEl = document.getElementById('status');
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
+
+        peer.on('open', (id) => {
+            document.getElementById('my-id').innerText = id;
+            statusEl.innerText = "ID Ready - Share with Phone";
+        });
+
+        peer.on('call', (call) => {
+            statusEl.innerText = "Incoming Stream...";
+            call.answer();
+            call.on('stream', (stream) => {
+                document.getElementById('remoteAudio').srcObject = stream;
+                statusEl.innerText = "LIVE - Routing to PC";
+                setupVisualizer(stream);
+            });
+        });
+
+        async function startStream() {
+            const targetId = document.getElementById('peer-id').value;
+            if (!targetId) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                peer.call(targetId, stream);
+                statusEl.innerText = "Transmitting...";
+                setupVisualizer(stream);
+            } catch (err) {
+                statusEl.innerText = "Error: " + err.message;
+            }
+        }
+
+        function setupVisualizer(stream) {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioCtx.createMediaStreamSource(stream);
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            function draw() {
+                requestAnimationFrame(draw);
+                analyser.getByteFrequencyData(dataArray);
+                canvasCtx.fillStyle = '#000';
+                canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+                const barWidth = (canvas.width / bufferLength) * 2.5;
+                let x = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    const barHeight = dataArray[i] / 2;
+                    canvasCtx.fillStyle = `rgb(88, 101, 242)`;
+                    canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                    x += barWidth + 1;
+                }
+            }
+            draw();
+        }
+    </script>
+</body>
+</html>
