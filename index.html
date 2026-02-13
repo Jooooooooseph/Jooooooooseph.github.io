@@ -3,55 +3,346 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VibeMic Live</title>
+    <title>VibeMic SafeLink</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #ffffff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
-        .card { background: #1a1a1a; padding: 2.5rem; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.7); text-align: center; width: 340px; border: 1px solid #333; }
-        h1 { font-size: 1.5rem; margin-bottom: 1rem; letter-spacing: 1px; color: #5865F2; }
-        .id-container { background: #000; padding: 12px; border-radius: 12px; font-family: monospace; font-size: 1.1rem; color: #00d4ff; margin: 15px 0; border: 1px solid #222; user-select: all; }
-        input { padding: 12px; border-radius: 10px; border: 1px solid #444; background: #222; color: white; margin-bottom: 15px; width: 100%; box-sizing: border-box; outline: none; }
-        button { background: #5865F2; border: none; color: white; padding: 14px; border-radius: 10px; cursor: pointer; font-weight: 700; width: 100%; font-size: 1rem; transition: 0.3s; }
-        button:hover { background: #4752c4; transform: translateY(-2px); }
-        #status { margin-top: 20px; font-size: 0.9rem; color: #888; }
+        /* Modern Dark Theme */
+        :root { --bg: #121212; --card: #1e1e1e; --primary: #5865F2; --danger: #ed4245; --success: #3ba55c; --text: #eee; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+        
+        .card { background: var(--card); padding: 2rem; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); width: 90%; max-width: 400px; text-align: center; border: 1px solid #333; transition: height 0.3s ease; }
+        
+        h1 { margin: 0 0 5px 0; color: var(--primary); font-weight: 800; letter-spacing: -1px; }
+        .badge { font-size: 0.75rem; background: #333; padding: 2px 8px; border-radius: 4px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* ID Display Area */
+        .id-box { background: #000; border: 1px solid #333; border-radius: 8px; padding: 15px; margin: 20px 0; font-family: monospace; font-size: 1.2rem; color: #00d4ff; cursor: pointer; position: relative; overflow: hidden; }
+        .id-box:hover { border-color: var(--primary); }
+        .id-box::after { content: 'CLICK TO COPY'; position: absolute; bottom: 2px; right: 5px; font-size: 0.6rem; color: #555; }
+
+        /* Input Fields */
+        input, select { width: 100%; padding: 12px; margin-bottom: 10px; background: #2b2b2b; border: 1px solid #444; border-radius: 8px; color: white; box-sizing: border-box; font-size: 1rem; outline: none; transition: 0.2s; }
+        input:focus { border-color: var(--primary); background: #333; }
+
+        /* Buttons */
+        button { width: 100%; padding: 14px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 1rem; transition: 0.2s; margin-bottom: 8px; color: white; }
+        .btn-primary { background: var(--primary); }
+        .btn-primary:hover { background: #4752c4; }
+        .btn-danger { background: var(--danger); display: none; } /* Hidden by default */
+        .btn-danger:hover { background: #c03537; }
+        .btn-secondary { background: #333; color: #ccc; }
+        .btn-secondary:hover { background: #444; }
+
+        /* Visualizer & Status */
         canvas { width: 100%; height: 60px; background: #000; border-radius: 8px; margin-top: 15px; border: 1px solid #333; }
+        #status-dot { height: 10px; width: 10px; background-color: #555; border-radius: 50%; display: inline-block; margin-right: 5px; }
+        .status-text { color: #888; font-size: 0.9rem; margin-top: 15px; display: flex; align-items: center; justify-content: center; }
+        
+        /* Helper Classes */
+        .hidden { display: none !important; }
+        .blink { animation: blinker 1.5s linear infinite; }
+        @keyframes blinker { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
+
     <div class="card">
-        <h1>VIBE MIC</h1>
-        <div class="id-container" id="my-id">Initializing...</div>
-        <input type="text" id="peer-id" placeholder="Paste PC ID here">
-        <button onclick="startStream()">CONNECT MIC</button>
+        <h1>VIBE MIC <span class="badge">SECURE</span></h1>
+        
+        <div id="setup-ui">
+            <div class="id-box" id="my-id" title="Click to Copy">Generating ID...</div>
+            
+            <select id="audio-output" class="hidden">
+                <option value="default">Default Speaker</option>
+            </select>
+            <p id="output-hint" class="hidden" style="font-size: 0.8rem; color: #666; margin-top:-5px;">Select 'CABLE Input' for Discord</p>
+        </div>
+
+        <div id="controls-ui">
+            <input type="text" id="target-id" placeholder="Enter Partner ID to Connect">
+            
+            <button id="btn-connect" class="btn-primary" onclick="startCall()">CONNECT MIC (SENDER)</button>
+            <button id="btn-unlock" class="btn-secondary" onclick="unlockAudio()">🔊 Enable Audio (PC Receiver)</button>
+            <button id="btn-hangup" class="btn-danger" onclick="endCall()">HANG UP / STOP</button>
+        </div>
+
         <canvas id="visualizer"></canvas>
-        <p id="status">System Standby</p>
-        <audio id="remoteAudio" autoplay></audio>
+        
+        <div class="status-text">
+            <span id="status-dot"></span>
+            <span id="status-msg">System Standby</span>
+        </div>
+
+        <audio id="remote-audio" autoplay playsinline></audio>
     </div>
 
     <script>
-        // 1. Define UI elements first to avoid "ReferenceError"
-        const statusEl = document.getElementById('status');
-        const canvas = document.getElementById('visualizer');
-        const canvasCtx = canvas.getContext('2d');
-        const myIdEl = document.getElementById('my-id');
-        const remoteAudio = document.getElementById('remoteAudio');
+        // --- CONFIGURATION ---
+        const ELEMENTS = {
+            statusMsg: document.getElementById('status-msg'),
+            statusDot: document.getElementById('status-dot'),
+            myId: document.getElementById('my-id'),
+            targetInput: document.getElementById('target-id'),
+            btnConnect: document.getElementById('btn-connect'),
+            btnHangup: document.getElementById('btn-hangup'),
+            btnUnlock: document.getElementById('btn-unlock'),
+            audioSelect: document.getElementById('audio-output'),
+            outputHint: document.getElementById('output-hint'),
+            visualizer: document.getElementById('visualizer'),
+            remoteAudio: document.getElementById('remote-audio')
+        };
 
-        // 2. Initialize PeerJS
-        // Note: If you still get errors, your network might be blocking PeerJS servers.
-        const peer = new Peer();
+        let peer;
+        let currentCall = null;
+        let localStream = null;
+        let audioContext = null;
+        let analyser = null;
+        let dataArray = null;
+        let animationId = null;
 
-        peer.on('open', (id) => {
-            myIdEl.innerText = id;
-            statusEl.innerText = "ID Ready - Share with Phone";
-            console.log("My ID is: " + id);
+        // --- INITIALIZATION ---
+        function init() {
+            setStatus('Initializing PeerJS...', '#ffaa00');
+            
+            // Generate a random, short ID for easier typing
+            const randomId = Math.floor(1000 + Math.random() * 9000); 
+            
+            try {
+                peer = new Peer(String(randomId), { debug: 1 });
+                
+                peer.on('open', (id) => {
+                    ELEMENTS.myId.innerText = id;
+                    setStatus('Ready. Share ID or Connect.', '#555');
+                    checkAudioOutputSupport();
+                });
+
+                peer.on('error', (err) => {
+                    console.error(err);
+                    setStatus(`Error: ${err.type}`, 'red');
+                });
+
+                // SECURE INCOMING CALL HANDLER
+                peer.on('call', handleIncomingCall);
+
+            } catch (e) {
+                setStatus('Critical: Failed to load PeerJS', 'red');
+            }
+        }
+
+        // --- SECURITY: INCOMING CALL "DOORMAN" ---
+        function handleIncomingCall(call) {
+            // 1. Security Check: Ask user permission
+            const accept = confirm(`📞 INCOMING CALL!\n\nID: ${call.peer} wants to stream audio.\n\nAccept connection?`);
+            
+            if (!accept) {
+                call.close();
+                setStatus('Connection Rejected', 'red');
+                return;
+            }
+
+            // 2. Accept Call
+            setStatus('Connecting...', '#ffaa00');
+            call.answer(); // Send back empty answer (we are receiving only)
+            setupCallEvents(call);
+        }
+
+        // --- OUTGOING CALL (SENDER) ---
+        async function startCall() {
+            const targetId = ELEMENTS.targetInput.value;
+            if (!targetId) return alert('Please enter the ID from the PC screen.');
+            
+            try {
+                setStatus('Requesting Mic...', '#ffaa00');
+                
+                // Get Microphone Stream
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+
+                setStatus('Calling...', '#ffaa00');
+                const call = peer.call(targetId, localStream);
+                setupCallEvents(call);
+                
+                // Switch UI to "Active Call" mode
+                toggleCallUI(true);
+                startVisualizer(localStream);
+
+            } catch (err) {
+                alert('Microphone access denied or error: ' + err.message);
+                setStatus('Mic Error', 'red');
+            }
+        }
+
+        // --- COMMON CALL HANDLER ---
+        function setupCallEvents(call) {
+            currentCall = call;
+
+            // When we receive a stream (PC Side)
+            call.on('stream', (remoteStream) => {
+                ELEMENTS.remoteAudio.srcObject = remoteStream;
+                ELEMENTS.remoteAudio.play().catch(e => console.error("Autoplay blocked", e));
+                setStatus('🔴 LIVE - AUDIO ACTIVE', '#3ba55c');
+                toggleCallUI(true);
+                startVisualizer(remoteStream);
+            });
+
+            call.on('close', () => {
+                endCall();
+            });
+
+            call.on('error', (err) => {
+                console.error(err);
+                endCall();
+            });
+        }
+
+        // --- HANG UP / RESET ---
+        function endCall() {
+            if (currentCall) currentCall.close();
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            if (animationId) cancelAnimationFrame(animationId);
+            
+            currentCall = null;
+            localStream = null;
+            
+            // Clear Visualizer
+            const ctx = ELEMENTS.visualizer.getContext('2d');
+            ctx.clearRect(0, 0, ELEMENTS.visualizer.width, ELEMENTS.visualizer.height);
+
+            toggleCallUI(false);
+            setStatus('Call Ended', '#555');
+        }
+
+        // --- AUDIO OUTPUT SELECTION (PC ONLY) ---
+        async function checkAudioOutputSupport() {
+            if (!('setSinkId' in HTMLMediaElement.prototype)) return;
+            
+            // We need to ask for permission to list devices (weird browser rule)
+            ELEMENTS.btnUnlock.classList.remove('hidden'); 
+        }
+
+        async function unlockAudio() {
+            // This function does two things:
+            // 1. Resumes AudioContext (fixes "Autoplay" issues)
+            // 2. Lists output devices so you can select Virtual Cable
+            
+            try {
+                // Dummy request to unlock permissions
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Enumerate Devices
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const outputs = devices.filter(d => d.kind === 'audiooutput');
+                
+                ELEMENTS.audioSelect.innerHTML = ''; // Clear existing
+                outputs.forEach(d => {
+                    const option = document.createElement('option');
+                    option.value = d.deviceId;
+                    option.text = d.label || `Speaker ${d.deviceId.slice(0,5)}`;
+                    ELEMENTS.audioSelect.appendChild(option);
+                });
+
+                ELEMENTS.audioSelect.classList.remove('hidden');
+                ELEMENTS.outputHint.classList.remove('hidden');
+                ELEMENTS.btnUnlock.classList.add('hidden'); // Hide button after success
+                setStatus('Audio Unlocked & Ready', '#3ba55c');
+
+                // Attach listener for changes
+                ELEMENTS.audioSelect.onchange = async () => {
+                    const deviceId = ELEMENTS.audioSelect.value;
+                    await ELEMENTS.remoteAudio.setSinkId(deviceId);
+                    setStatus(`Output: ${ELEMENTS.audioSelect.options[ELEMENTS.audioSelect.selectedIndex].text}`, '#5865F2');
+                };
+
+            } catch (e) {
+                alert("Could not access audio devices. Ensure you gave permission.");
+            }
+        }
+
+        // --- VISUALIZER ---
+        function startVisualizer(stream) {
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioContext.state === 'suspended') audioContext.resume();
+
+            const source = audioContext.createMediaStreamSource(stream);
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 128;
+            source.connect(analyser);
+            
+            // If on PC (Receiver), connect to destination so we can hear it!
+            // If on Phone (Sender), DO NOT connect to destination (avoids feedback loop)
+            if (!localStream) { 
+                analyser.connect(audioContext.destination);
+            }
+
+            const bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+            const canvas = ELEMENTS.visualizer;
+            const ctx = canvas.getContext('2d');
+
+            function draw() {
+                animationId = requestAnimationFrame(draw);
+                analyser.getByteFrequencyData(dataArray);
+                
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const barWidth = (canvas.width / bufferLength) * 2.5;
+                let x = 0;
+                
+                for(let i = 0; i < bufferLength; i++) {
+                    const barHeight = (dataArray[i] / 255) * canvas.height;
+                    
+                    // Dynamic Color based on volume
+                    const r = barHeight + (25 * (i/bufferLength));
+                    const g = 250 * (i/bufferLength);
+                    const b = 50;
+                    
+                    ctx.fillStyle = `rgb(${r},${g},${b})`;
+                    ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                    x += barWidth + 1;
+                }
+            }
+            draw();
+        }
+
+        // --- UI UTILS ---
+        function setStatus(msg, color) {
+            ELEMENTS.statusMsg.innerText = msg;
+            ELEMENTS.statusDot.style.backgroundColor = color;
+            if (color === '#3ba55c') ELEMENTS.statusDot.classList.add('blink');
+            else ELEMENTS.statusDot.classList.remove('blink');
+        }
+
+        function toggleCallUI(isActive) {
+            if (isActive) {
+                ELEMENTS.targetInput.classList.add('hidden');
+                ELEMENTS.btnConnect.classList.add('hidden');
+                ELEMENTS.btnUnlock.classList.add('hidden');
+                ELEMENTS.btnHangup.style.display = 'block';
+            } else {
+                ELEMENTS.targetInput.classList.remove('hidden');
+                ELEMENTS.btnConnect.classList.remove('hidden');
+                ELEMENTS.btnHangup.style.display = 'none';
+                if (ELEMENTS.audioSelect.options.length === 0) ELEMENTS.btnUnlock.classList.remove('hidden');
+            }
+        }
+
+        // Click ID to copy
+        ELEMENTS.myId.addEventListener('click', () => {
+            navigator.clipboard.writeText(ELEMENTS.myId.innerText);
+            const prev = ELEMENTS.myId.innerText;
+            ELEMENTS.myId.innerText = "COPIED!";
+            setTimeout(() => ELEMENTS.myId.innerText = prev, 1500);
         });
 
-        peer.on('error', (err) => {
-            console.error(err);
-            statusEl.innerText = "Error: " + err.type;
-        });
+        // Run
+        init();
 
-        // 3. Handle Incoming Calls (PC Side)
-        peer.on('call', (call) => {
-            statusEl.innerText = "Incoming Stream...";
-            call.answer();
+    </script>
+</body>
+</html>
